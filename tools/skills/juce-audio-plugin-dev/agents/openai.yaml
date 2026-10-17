@@ -1,0 +1,3 @@
+interface:
+  display_name: "JUCE Audio Plugin Dev"
+  short_description: "DSP, GUI и проверки аудиоплагинов на JUCE"

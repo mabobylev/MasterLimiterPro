@@ -1,0 +1,16 @@
+# Local dependency and generated build outputs
+/JUCE/
+/build*/
+/.cache/
+
+# Local agent/configuration surfaces
+/.codex/
+/.agents/
+/.aws/
+
+# Editor and operating-system temporary files
+*.user
+*.swp
+*.swo
+*~
+.DS_Store

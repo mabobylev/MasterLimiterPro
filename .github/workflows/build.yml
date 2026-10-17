@@ -1,0 +1,36 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ pkg-config \
+            libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+            libgl1-mesa-dev libx11-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxcursor-dev libgtk-3-dev libcurl4-openssl-dev xvfb
+      - name: Fetch pinned JUCE
+        run: |
+          git clone --depth 1 --branch 9.0.3 https://github.com/juce-framework/JUCE.git JUCE
+          test "$(git -C JUCE rev-parse HEAD)" = "$(cat JUCE_REVISION)"
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DMASTERLIMITER_COPY_PLUGIN_AFTER_BUILD=OFF
+      - name: Build
+        run: cmake --build build --target MasterLimiterTests MasterLimiterPro_VST3 -j2
+      - name: Verify DSP and GUI
+        run: xvfb-run -a env MASTERLIMITER_PREVIEWS=1 ctest --test-dir build --output-on-failure
