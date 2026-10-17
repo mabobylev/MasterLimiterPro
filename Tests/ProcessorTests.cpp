@@ -245,8 +245,14 @@ static void limitCompatibility()
     legacyCopy.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     modern.getStateInformation(state);
     legacyCopy.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
-    juce::Thread::sleep(40);
-    juce::Timer::callPendingTimersSynchronously();
+    // Timer thread startup/scheduling can exceed one 30 Hz period on CI.
+    // Wait for the observable binding, keeping a deadline so a broken rebind fails.
+    const auto deadline = juce::Time::getMillisecondCounterHiRes() + 2000.0;
+    while (limit->getMinimum() != -6.0 && juce::Time::getMillisecondCounterHiRes() < deadline)
+    {
+        juce::Thread::sleep(10);
+        juce::Timer::callPendingTimersSynchronously();
+    }
     require(limit->getMinimum() == -6.0 && limit->getMaximum() == 0.0, "Open editor did not rebind after state change");
 }
 
