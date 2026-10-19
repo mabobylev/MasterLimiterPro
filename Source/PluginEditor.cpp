@@ -50,9 +50,10 @@ void InputLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int wid
     g.drawLine({point(zero, radius - 8.f), point(zero, radius + 8.f)}, 1.5f);
     g.setFont(font(16.f, true));
     g.setColour(text.withAlpha(.85f));
-    const float signY = centre.y + radius * .70f - 10.f;
-    g.drawText("-", centre.x - radius - 23.f, signY, 20.f, 20.f, juce::Justification::centred);
-    g.drawText("+", centre.x + radius + 3.f, signY, 20.f, 20.f, juce::Justification::centred);
+    const float signOffset = (radius + 12.f) * 0.70710678f;
+    const float signY = centre.y + signOffset - 10.f;
+    g.drawText("-", centre.x - signOffset - 10.f, signY, 20.f, 20.f, juce::Justification::centred);
+    g.drawText("+", centre.x + signOffset - 10.f, signY, 20.f, 20.f, juce::Justification::centred);
     const auto pointer = point(angle, radius);
     g.setColour(orange);
     g.fillEllipse(pointer.x - 6.f, pointer.y - 6.f, 12.f, 12.f);
@@ -260,10 +261,10 @@ void MasterLimiterAudioProcessorEditor::resized()
     auto area = getLocalBounds().reduced(26);
     area.removeFromTop(58);
     area.removeFromBottom(22);
-    controlsPanel = area.removeFromBottom(180);
-    area.removeFromBottom(12);
     metersPanel = area.removeFromRight(250);
     area.removeFromRight(12);
+    controlsPanel = area.removeFromBottom(180);
+    area.removeFromBottom(12);
     graphPanel = area;
     history.setBounds(graphPanel.reduced(16).withTrimmedTop(30).withTrimmedBottom(26));
     resetButton.setBounds(metersPanel.getX() + 16, metersPanel.getBottom() - 43, metersPanel.getWidth() - 32, 26);
