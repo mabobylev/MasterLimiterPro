@@ -94,3 +94,18 @@
   остались на кадрах 48000/144000. Проверен чистый SP fixture, не TP ON
   и не активное ограничение/автоматизация. Хеши и metadata сохранены
   в build/host-audit/render-comparison.json (вне Git).
+
+### Музыкальный offline/realtime render — 2026-10-19
+
+- Экспорт был запрошен с настройками TP ON, Limit −3 dB, Soft Clip OFF,
+  входным усилением для GR 2–4 dB, stereo float32 48 kHz, одна область с хвостом 0.5 s. Сами
+  параметры сессии из WAV независимо не устанавливаются.
+- `music_offline.wav` и `music_realtime.wav`: PCM float32, stereo, 48 kHz,
+  1,063,385 кадров / 22.153854 s; NaN/Inf не обнаружены. Все 2,126,770
+  декодированных float32 значений совпали точно: max abs error и RMS difference
+  равны 0. FFmpeg ebur128=peak=true показал TP −3.7 dBFS (вывод округлён до 0.1 dB); astats sample peak
+  −3.686341 dBFS, RMS −12.999167 dBFS.
+- Хеши, сравнение и журналы сохранены в
+  `build/host-audit/music-comparison/` (вне Git). Это сравнение данных файлов;
+  оно не подтверждает PDC, параметры сессии, все режимы limiter, прослушивание
+  или сертификацию BS.1770.
