@@ -9,6 +9,11 @@
 #include <new>
 #include <limits>
 #include <thread>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <string>
+#include <cstring>
 
 static std::atomic<bool> watchAllocations{false};
 static std::atomic<int> allocations{0};
@@ -632,6 +637,132 @@ static void truePeakTests()
     std::cout << "TP: SP fixture=" << juce::Decibels::gainToDecibels(spPeak) << " dBTP; worst protected deviation=" << worst << " dB relative to Limit; latency=" << p.getLatencyMs() << " ms\n";
 }
 
+static void writeLe16(std::ostream& out, uint16_t value)
+{
+    const char bytes[] = {static_cast<char>(value), static_cast<char>(value >> 8)};
+    out.write(bytes, sizeof(bytes));
+}
+
+static void writeLe32(std::ostream& out, uint32_t value)
+{
+    const char bytes[] = {static_cast<char>(value), static_cast<char>(value >> 8),
+                          static_cast<char>(value >> 16), static_cast<char>(value >> 24)};
+    out.write(bytes, sizeof(bytes));
+}
+
+static void writeFloat32(std::ostream& out, float sample)
+{
+    uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(sample), "float32 WAV requires 32-bit float");
+    std::memcpy(&bits, &sample, sizeof(bits));
+    writeLe32(out, bits);
+}
+
+static std::string auditSignalName(int signal)
+{
+    return signal == 0 ? "fs4" : signal == 1 ? "wideband" : "impulse";
+}
+
+static std::string auditLimitName(float limit)
+{
+    const int db = static_cast<int>(std::lround(limit));
+    return db == 0 ? "0" : db == -1 ? "m1" : "m6";
+}
+
+static void exportTruePeakAudit(const std::filesystem::path& outputDir)
+{
+    std::error_code error;
+    std::filesystem::create_directories(outputDir, error);
+    require(!error && std::filesystem::is_directory(outputDir), "Audit output directory unavailable");
+    require(std::filesystem::directory_iterator(outputDir) == std::filesystem::directory_iterator(),
+            "Audit output directory must be empty");
+
+    struct Case { std::string file; std::string signal; int sampleRate; std::string mode; float limit;
+                  int samples; int activeSamples; int flushSamples; };
+    std::vector<Case> cases;
+    constexpr int blockSize = 257;
+    juce::MidiBuffer midi;
+    const double pi = juce::MathConstants<double>::pi;
+
+    for (double sampleRate : {44100., 48000., 96000., 192000.})
+    for (int signal = 0; signal < 3; ++signal)
+    for (bool truePeak : {false, true})
+    for (float limit : {-6.f, -1.f, 0.f})
+    {
+        MasterLimiterAudioProcessor processor;
+        std::mt19937 random(918273); // Same wideband sequence for each mode/limit at a given rate.
+        std::uniform_real_distribution<float> noise(-1.f, 1.f);
+        param(processor, "INPUT", 12.f);
+        param(processor, "LIMIT", limit);
+        param(processor, "TRUEPEAK", truePeak ? 1.f : 0.f);
+        param(processor, "LINK", 1.f);
+        param(processor, "SOFTCLIP", 0.f);
+        processor.prepareToPlay(sampleRate, blockSize);
+        const int activeSamples = static_cast<int>(std::lround(sampleRate * .12));
+        const int flushSamples = processor.getLatencySamples() + static_cast<int>(std::lround(sampleRate * .05));
+        const int totalSamples = activeSamples + flushSamples;
+        const auto signalName = auditSignalName(signal);
+        const auto modeName = truePeak ? "tp" : "sp";
+        const auto fileName = signalName + "_" + std::to_string(static_cast<int>(sampleRate)) + "_" + modeName
+            + "_" + auditLimitName(limit) + ".wav";
+        std::ofstream wav(outputDir / fileName, std::ios::binary | std::ios::trunc);
+        require(wav.good(), "Could not create audit WAV");
+        wav.write("RIFF", 4); writeLe32(wav, 36u + static_cast<uint32_t>(totalSamples) * 8u);
+        wav.write("WAVEfmt ", 8); writeLe32(wav, 16u); writeLe16(wav, 3u); writeLe16(wav, 2u);
+        writeLe32(wav, static_cast<uint32_t>(sampleRate)); writeLe32(wav, static_cast<uint32_t>(sampleRate) * 8u);
+        writeLe16(wav, 8u); writeLe16(wav, 32u); wav.write("data", 4);
+        writeLe32(wav, static_cast<uint32_t>(totalSamples) * 8u);
+
+        for (int pos = 0; pos < totalSamples; pos += blockSize)
+        {
+            const int count = std::min(blockSize, totalSamples - pos);
+            juce::AudioBuffer<float> audio(2, count);
+            for (int i = 0; i < count; ++i)
+            {
+                const int n = pos + i;
+                float input = 0.f;
+                if (n < activeSamples)
+                {
+                    if (signal == 0) input = static_cast<float>(.8 * std::sin(2.0 * pi * .25 * n + pi / 4.0));
+                    else if (signal == 1) input = .8f * noise(random);
+                    else if (n % std::max(1, static_cast<int>(sampleRate * .02)) == 0) input = (n / 997) % 2 ? -.95f : .95f;
+                }
+                audio.setSample(0, i, input);
+                audio.setSample(1, i, -input);
+            }
+            processor.processBlock(audio, midi);
+            for (int i = 0; i < count; ++i)
+            {
+                writeFloat32(wav, audio.getSample(0, i));
+                writeFloat32(wav, audio.getSample(1, i));
+            }
+            require(wav.good(), "Audit WAV write failed");
+        }
+        wav.close();
+        require(!wav.fail(), "Audit WAV close failed");
+        cases.push_back({fileName, signalName, static_cast<int>(sampleRate), modeName, limit,
+                         totalSamples, activeSamples, flushSamples});
+    }
+
+    std::ofstream manifest(outputDir / "manifest.json", std::ios::trunc);
+    require(manifest.good(), "Could not create audit manifest");
+    manifest << "{\n  \"format\": \"float32-wav\",\n  \"channels\": 2,\n  \"cases\": [\n";
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+        const auto& item = cases[i];
+        manifest << "    {\"file\": \"" << item.file << "\", \"signal\": \"" << item.signal
+                 << "\", \"sample_rate\": " << item.sampleRate << ", \"mode\": \"" << item.mode
+                 << "\", \"limit_db\": " << std::fixed << std::setprecision(1) << item.limit
+                 << ", \"samples\": " << item.samples << ", \"active_samples\": " << item.activeSamples
+                 << ", \"tail_flush_samples\": " << item.flushSamples << ", \"input_gain_db\": 12.0"
+                 << ", \"stereo_link_percent\": 100, \"soft_clip\": false, \"block_size\": " << blockSize
+                 << "}" << (i + 1 == cases.size() ? "\n" : ",\n");
+    }
+    manifest << "  ]\n}\n";
+    require(manifest.good(), "Audit manifest write failed");
+    std::cout << "EXPORT PASS: " << cases.size() << " float32 WAV cases in " << outputDir.string() << '\n';
+}
+
 static void previews()
 {
     MasterLimiterAudioProcessor p;
@@ -684,6 +815,12 @@ int main()
     try
     {
         juce::ScopedJuceInitialiser_GUI init;
+        if (const char* auditDir = std::getenv("MASTERLIMITER_EXPORT_AUDIT"))
+        {
+            require(*auditDir != '\0', "MASTERLIMITER_EXPORT_AUDIT must name an output directory");
+            exportTruePeakAudit(auditDir);
+            return 0;
+        }
         coreTests();
         for (double sr : {44100., 48000., 96000., 192000.})
             for (int channels : {1, 2})

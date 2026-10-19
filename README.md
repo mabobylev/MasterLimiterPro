@@ -91,6 +91,11 @@ ctest --test-dir build --output-on-failure
 `-DMASTERLIMITER_COPY_PLUGIN_AFTER_BUILD=OFF` при конфигурации.
 По умолчанию установка включена.
 
+Для приёмки VST3 в REAPER используйте [чек-лист](docs/DAW_CHECKLIST.md).
+Независимый аудит float32-выхода процессора через FFmpeg описан
+в [TRUE_PEAK_AUDIT.md](docs/TRUE_PEAK_AUDIT.md). Аудиофайлы и полные журналы
+создаются только в игнорируемом build/.
+
 ## Ограничения и продолжение
 
 True Peak — проверенная на тестовых сигналах защита, а не сертификат
