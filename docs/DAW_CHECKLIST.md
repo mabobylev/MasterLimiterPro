@@ -72,3 +72,22 @@ ffmpeg -hide_banner -nostats -i "render.wav" -af ebur128=peak=true -f null - 2> 
 не использовать его как подтверждение межсэмплового потолка этой частоты.
 Автоматический экспорт тестового процессора описан в TRUE_PEAK_AUDIT.md;
 он отдельно от render VST3 внутри REAPER.
+
+### Проверенный пользовательский экспорт — 2026-10-19
+
+Экспорт запрошен с параметрами Limit −3 dBTP, True Peak ON;
+сохранение настроек и работа автоматизации подтверждены отдельно. Для файла
+`/home/bma/Temp/test_limit.wav` локально проверены metadata, SHA-256 и метрики
+FFmpeg. Это stereo PCM float32, 48 kHz, 29.033813 s; sample peak −3.686342
+dBFS, FFmpeg True Peak −3.7 dBFS (вывод с шагом 0.1 dB), Integrated −10.8
+LUFS, RMS −13.902740 dBFS, NaN/Inf нет. SHA-256:
+`449e23290bd8fb609cbe3d4b7123a162f86a051657f54f41f9fb971eaba8104e`.
+
+Последние 0.5 s содержат низкоуровневый ненулевой сигнал: sample peak
+−42.14/−41.30 dBFS по каналам, 24 000 stereo-кадров, NaN/Inf нет. Это
+показывает наличие сигнала в последних 0.5 s, но само по себе не
+устанавливает, корректно ли сохранён музыкальный хвост. Файл не прослушивался.
+Из WAV нельзя установить PDC, realtime/offline режим, все исходные настройки
+сессии либо соответствие BS.1770; измерение не является сертификацией.
+Полные журналы: `build/render-audit/test-limit-meter.log`,
+`build/render-audit/test-limit-stats.log`, `build/render-audit/test-limit-tail.log`.
