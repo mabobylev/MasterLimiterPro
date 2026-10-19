@@ -91,3 +91,15 @@ LUFS, RMS −13.902740 dBFS, NaN/Inf нет. SHA-256:
 сессии либо соответствие BS.1770; измерение не является сертификацией.
 Полные журналы: `build/render-audit/test-limit-meter.log`,
 `build/render-audit/test-limit-stats.log`, `build/render-audit/test-limit-tail.log`.
+
+### Компенсация задержки REAPER — 2026-10-19
+
+Пользователь предоставил test_pdc.wav после запроса Input 0 dB, Limit −3 dB,
+TP OFF, Soft Clip OFF. PCM float32, stereo, 48 kHz, ровно 240000 кадров / 5 s.
+Декодирование FFmpeg и сравнение Python по всем сэмплам: только два ненулевых
+кадра, 48000 и 144000, в обоих L=0.125, R=−0.0625. Максимальная абсолютная
+ошибка относительно исходного PCM16 fixture равна 0.0. В этом экспорте
+REAPER полностью компенсировал задержку и сохранил чистый сигнал. Это не
+проверка TP ON, bypass, других частот, нескольких экземпляров или realtime.
+SHA-256 экспорта: `5f623a6bf5559d1c857b747aac568a89d967b1124e65cbe85a555baf63c06624`.
+Машиночитаемый результат: build/host-audit/pdc-result.json (вне Git).
