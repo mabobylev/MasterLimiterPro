@@ -50,6 +50,7 @@ void MasterLimiterAudioProcessor::prepareToPlay(double sr, int)
     truePeakGuard.start(isTruePeakEnabled(), sr);
     truePeakMeter.reset();
     signalHistory.prepare(sr);
+    loudnessMeter.prepare(sr);
     setLatencySamples(limiter.latency() + truePeakGuard.getLatency());
     latencyMs.store(1000.f * static_cast<float>(getLatencySamples() / sr));
     for (auto& channel : dryDelay)
@@ -101,6 +102,8 @@ void MasterLimiterAudioProcessor::resetMeters()
 void MasterLimiterAudioProcessor::clearMeterState()
 {
     inputPower = outputPower = 0.0;
+    loudnessMeter.reset();
+    publishLoudness({-100.f, -100.f, -100.f});
     displayTruePeak = -100.f;
     signalHistory.reset();
     displayInput = displayOutput = heldOutput = -100.f;
@@ -217,6 +220,7 @@ void MasterLimiterAudioProcessor::process(juce::AudioBuffer<float>& b, bool bypa
             displayGR = juce::jmax(gr, displayGR - meterDecay);
             displayTruePeak = juce::jmax(safeDb(truePeakMeter.process(outL, outR)), displayTruePeak - meterDecay);
             signalHistory.push(outL, outR, gr, workCeiling[static_cast<size_t>(i)]);
+            loudnessMeter.process(outL, outR, ch);
             if (op >= heldOutput) { heldOutput = op; holdSamples = juce::roundToInt(currentSampleRate); }
             else if (holdSamples > 0) --holdSamples;
             else heldOutput = juce::jmax(op, heldOutput - holdDecay);
@@ -227,6 +231,18 @@ void MasterLimiterAudioProcessor::process(juce::AudioBuffer<float>& b, bool bypa
     outputRms.store(safeDb(static_cast<float>(std::sqrt(outputPower))));
     peakHoldDb.store(heldOutput); gainReductionDb.store(displayGR);
     outputTruePeakDb.store(displayTruePeak);
+    publishLoudness(loudnessMeter.readings());
+}
+
+void MasterLimiterAudioProcessor::publishLoudness(LoudnessMeter::Readings readings) noexcept
+{
+    // One audio owner, SC atomic payload and sequence: GUI never accepts a
+    // mixture of different M/S/I publications. GUI reset only requests a clear.
+    loudnessSequence.fetch_add(1);
+    loudnessM.store(readings.momentary);
+    loudnessS.store(readings.shortTerm);
+    loudnessI.store(readings.integrated);
+    loudnessSequence.fetch_add(1);
 }
 
 void MasterLimiterAudioProcessor::getStateInformation(juce::MemoryBlock& d)

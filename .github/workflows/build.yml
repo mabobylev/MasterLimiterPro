@@ -3,8 +3,14 @@ name: Build and test
 on:
   push:
     branches: [master]
+    paths-ignore: ['**/*.md', 'tools/skills/**']
   pull_request:
+    paths-ignore: ['**/*.md', 'tools/skills/**']
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -31,8 +37,10 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DMASTERLIMITER_COPY_PLUGIN_AFTER_BUILD=OFF
       - name: Build
-        run: cmake --build build --target MasterLimiterTests MasterLimiterPro_VST3 -j2
+        run: cmake --build build --target MasterLimiterTests MasterLimiterLoudnessTests MasterLimiterPro_VST3 -j2
       - name: Verify DSP and GUI
         run: xvfb-run -a env MASTERLIMITER_PREVIEWS=1 ctest --test-dir build --output-on-failure
       - name: Audit exported output with FFmpeg
         run: xvfb-run -a python3 tools/validate_true_peak.py --test-binary build/MasterLimiterTests --output-dir build/true-peak-audit
+      - name: Audit LUFS with FFmpeg
+        run: python3 tools/validate_loudness.py --test-binary build/MasterLimiterLoudnessTests --output-dir build/loudness-audit

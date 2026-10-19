@@ -207,6 +207,7 @@ MasterLimiterAudioProcessorEditor::MasterLimiterAudioProcessorEditor(MasterLimit
     addAndMakeVisible(history);
     resetButton.setColour(juce::TextButton::buttonColourId, panel2);
     resetButton.setColour(juce::TextButton::textColourOffId, muted);
+    resetButton.setTooltip("Reset peak, RMS, true peak, LUFS M/S/I and waveform. Integrated loudness restarts from the next audio block.");
     resetButton.onClick = [this] { processor.resetMeters(); history.clear(); };
     addAndMakeVisible(resetButton);
     setResizable(true, true);
@@ -324,23 +325,44 @@ void MasterLimiterAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("6 s", graphPanel.reduced(16).removeFromBottom(18), juce::Justification::right);
     g.setColour(muted);
     g.drawText("LEVELS", metersPanel.reduced(16).removeFromTop(18), juce::Justification::left);
-    auto bars = metersPanel.toFloat().reduced(12.f).withTrimmedTop(26.f).withTrimmedBottom(114.f);
+    auto bars = metersPanel.toFloat().reduced(12.f).withTrimmedTop(26.f).withTrimmedBottom(136.f);
     const float width = bars.getWidth() / 3.f;
     drawMeter(g, bars.removeFromLeft(width), inputDb, "INPUT", orange, false);
     drawMeter(g, bars.removeFromLeft(width), reductionDb, "GR", pink, true);
     drawMeter(g, bars, outputDb, "OUTPUT", green, false);
-    auto footer = metersPanel.reduced(16).withTop(metersPanel.getBottom() - 117);
+    auto footer = metersPanel.reduced(16).withTop(metersPanel.getBottom() - 139);
     g.setFont(font(10.f));
     g.setColour(muted);
-    g.drawText("IN RMS   " + dbText(inputRms), footer.removeFromTop(14), juce::Justification::left);
-    g.drawText("OUT RMS   " + dbText(outputRms), footer.removeFromTop(14), juce::Justification::left);
+    auto rmsRow = footer.removeFromTop(14);
+    g.drawText("IN RMS " + dbText(inputRms), rmsRow.removeFromLeft(rmsRow.getWidth() / 2), juce::Justification::left);
+    g.drawText("OUT RMS " + dbText(outputRms), rmsRow, juce::Justification::right);
+    auto peakRow = footer.removeFromTop(14);
     g.setColour(green);
-    g.drawText("OUT HOLD   " + dbText(outputHold), footer.removeFromTop(14), juce::Justification::left);
+    g.drawText("HOLD " + dbText(outputHold), peakRow.removeFromLeft(peakRow.getWidth() / 2), juce::Justification::left);
     const float tp = processor.getOutputTruePeak();
-    g.drawText("OUT TP   " + (tp <= -99.f ? juce::String("-inf") : juce::String(tp, 1)) + " dBTP", footer.removeFromTop(14), juce::Justification::left);
+    g.drawText("TP " + (tp <= -99.f ? juce::String("-inf") : juce::String(tp, 1)) + " dBTP", peakRow, juce::Justification::right);
+    footer.removeFromTop(6);
+    g.setColour(muted);
+    g.setFont(font(10.f, true));
+    g.drawText("OUTPUT LOUDNESS / LUFS", footer.removeFromTop(16), juce::Justification::left);
+    const auto loudness = processor.getOutputLoudness();
+    const std::array<float, 3> readings{loudness.momentary, loudness.shortTerm, loudness.integrated};
+    const std::array<const char*, 3> names{"M", "S", "I"};
+    const int loudnessWidth = footer.getWidth() / 3;
+    for (size_t i = 0; i < readings.size(); ++i)
+    {
+        auto cell = footer.removeFromLeft(loudnessWidth);
+        g.setColour(muted);
+        g.setFont(font(10.f, true));
+        g.drawText(names[i], cell.removeFromTop(13), juce::Justification::centred);
+        g.setColour(i == 2 ? green : text);
+        g.setFont(font(15.f, true));
+        g.drawText(readings[i] <= -99.f ? juce::String("-inf") : juce::String(readings[i], 1),
+            cell.removeFromTop(22), juce::Justification::centred);
+    }
     g.setColour(muted);
     g.setFont(font(10.f));
-    g.drawText("OUTPUT WAVEFORM  /  6 s  /  RMS + TRUE-PEAK METERING", 28, getHeight() - 36, 500, 18, juce::Justification::left);
+    g.drawText("OUTPUT WAVEFORM  /  6 s  /  RMS / TRUE PEAK / LUFS M S I", 28, getHeight() - 36, 500, 18, juce::Justification::left);
 }
 
 void MasterLimiterAudioProcessorEditor::timerCallback()

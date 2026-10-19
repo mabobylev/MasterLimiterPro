@@ -763,6 +763,57 @@ static void exportTruePeakAudit(const std::filesystem::path& outputDir)
     std::cout << "EXPORT PASS: " << cases.size() << " float32 WAV cases in " << outputDir.string() << '\n';
 }
 
+static void loudnessIntegrationTests()
+{
+    // The reference sees exactly the samples delivered to the host, including
+    // mono routing, TP filtering and bypass, rather than the limiter input.
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        MasterLimiterAudioProcessor processor;
+        if (mode == 0)
+        {
+            auto layout = processor.getBusesLayout();
+            layout.inputBuses.set(0, juce::AudioChannelSet::mono());
+            layout.outputBuses.set(0, juce::AudioChannelSet::mono());
+            require(processor.setBusesLayout(layout), "LUFS mono layout rejected");
+        }
+        const int channels = mode == 0 ? 1 : 2;
+        param(processor, "TRUEPEAK", mode == 1 ? 1.f : 0.f);
+        processor.prepareToPlay(48000., 257);
+        LoudnessMeter reference;
+        reference.prepare(48000.);
+        juce::MidiBuffer midi;
+        for (int offset = 0; offset < 192000; offset += 257)
+        {
+            const int count = std::min(257, 192000 - offset);
+            juce::AudioBuffer<float> audio(channels, count);
+            for (int i = 0; i < count; ++i)
+            {
+                const float v = static_cast<float>(.2 * std::sin(2.0 * juce::MathConstants<double>::pi * 997.0 * (offset + i) / 48000.0));
+                audio.setSample(0, i, v);
+                if (channels == 2) audio.setSample(1, i, -.5f * v);
+            }
+            if (mode == 2) processor.processBlockBypassed(audio, midi);
+            else processor.processBlock(audio, midi);
+            for (int i = 0; i < count; ++i)
+                reference.process(audio.getSample(0, i), channels == 2 ? audio.getSample(1, i) : 0.f, channels);
+        }
+        const auto actual = processor.getOutputLoudness();
+        const auto expected = reference.readings();
+        require(actual.momentary == expected.momentary && actual.shortTerm == expected.shortTerm
+                && actual.integrated == expected.integrated, "LUFS not measured at final host output");
+        require(actual.integrated > -70.f && actual.shortTerm > -70.f, "LUFS integration never became ready");
+        processor.resetMeters();
+        const auto cleared = processor.getOutputLoudness();
+        require(cleared.momentary == -100.f && cleared.shortTerm == -100.f
+                && cleared.integrated == -100.f, "Stopped LUFS reset did not clear published readings");
+        juce::AudioBuffer<float> silence(channels, 257);
+        silence.clear();
+        processor.processBlock(silence, midi);
+        require(processor.getOutputLoudness().integrated == -100.f, "Audio LUFS accumulator retained old programme after reset");
+    }
+}
+
 static void previews()
 {
     MasterLimiterAudioProcessor p;
@@ -840,6 +891,7 @@ int main()
         saturationTests();
         historyTests();
         truePeakTests();
+        loudnessIntegrationTests();
         if (std::getenv("MASTERLIMITER_PREVIEWS") != nullptr) previews();
         std::cout << "PASS: delay, anticipation, ceiling, stereo link, mono/stereo, antiphase, block invariance, bypass, reset, state, automation\n";
     }

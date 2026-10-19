@@ -245,3 +245,42 @@ REAPER полностью компенсировал задержку и сох�
 проверка TP ON, bypass, других частот, нескольких экземпляров или realtime.
 SHA-256 экспорта: `5f623a6bf5559d1c857b747aac568a89d967b1124e65cbe85a555baf63c06624`.
 Машиночитаемый результат: build/host-audit/pdc-result.json (вне Git).
+
+## LUFS — 1.2.0, 2026-10-19
+
+Общий расчёт разработан Luna, интеграция и итоговая проверка — координатором.
+Annex 1 shelf/RLB coefficients на 48k сверены с таблицами ITU, для других
+частот используются bilinear transforms. M400ms/S3s обновляются каждые 100 ms;
+I добавляет перекрывающиеся 400 ms blocks. Histogram хранит actual energy sums
+и counts в 15001 фиксированном bin; .01LU — шаг классификации, не гарантия
+ошибки I около порогов. Свыше+80LUFS overflowbin сохраняет actual energy.
+
+Сэмплы берутся из окончательного буфера после TP/mode mix/bypass. При mono
+дублированный внутренний R не учитывается. Audio-owned meter публикует M/S/I
+через SC atomic payload/sequence; bounded GUI reader принимает целый snapshot.
+GUI RESETMETERS только запрашивает очистку и сразу скрывает старые значения.
+Transport/playhead не читается; manual reset задаёт новое измерение. До полного
+окна/на тишине показывается −inf. Измерение не сохраняется в APVTS.
+
+RMS оставлен отдельно. Справа компактные RMS/Hold/TP и M/S/I, с читаемыми
+цифрами в минимальном окне. Пересмотрен footer. Параметры, нормализация,
+идентификаторы VST3 и задержка сохранены. Source/LoudnessMeter.h не выделяет
+память и не выполняет блокировки в prepare/process/reset/readings.
+
+CTest 2/2 PASS, 15.75 s. Отдельный unit охватывает 44.1/48/96/192/384 kHz,
+mono/stereo/противофазу, gating, окна и C++ allocation probe. Дополнительно
+проверена интеграция по фактическому выходу процессора (mono SP, stereo TP,
+bypass), мгновенный reset display и audio reset accumulator.
+FFmpeg M/S/I-аудит 16 cases: максимальное наблюдаемое расхождение 0.0096 LU
+при допуске 0.1 LU. Музыкальный WAV: I−10.5457 против−10.551LUFS.
+Evidence: build/loudness-audit-verified/ и build/loudness-user-validation/.
+GUI snapshots900×580/1800×1100 просмотрены напрямую. Нет заявления
+сертификации или приёмки новой LUFS-функции в DAW до проверки пользователем.
+
+CI дополнен отдельным LUFS unit и FFmpeg-аудитом. Изменение только документации
+и skill больше не пересобирает плагин; новые jobs одной ветки отменяют устаревшие.
+
+Установлен VST3 1.2.0 через новые inode с os.replace без перезаписи
+памяти уже загруженного старого .so. Все файлы bundle совпадают по SHA-256.
+CMake COPY_PLUGIN_AFTER_BUILD снова ON; промежуточные audit-каталоги удалены,
+окончательные evidence в build/loudness-audit-verified/ сохранены.

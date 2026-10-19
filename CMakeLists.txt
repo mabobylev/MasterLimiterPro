@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(MasterLimiterPro VERSION 1.1.0)
+project(MasterLimiterPro VERSION 1.2.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -60,4 +60,10 @@ if(BUILD_TESTING)
     target_link_libraries(MasterLimiterTests PRIVATE MasterLimiterPro)
     add_test(NAME MasterLimiterProcessor COMMAND MasterLimiterTests)
     set_tests_properties(MasterLimiterProcessor PROPERTIES TIMEOUT 90)
+
+    add_executable(MasterLimiterLoudnessTests Tests/LoudnessTests.cpp)
+    target_include_directories(MasterLimiterLoudnessTests PRIVATE Source)
+    target_compile_options(MasterLimiterLoudnessTests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME MasterLimiterLoudness COMMAND MasterLimiterLoudnessTests)
+    set_tests_properties(MasterLimiterLoudness PROPERTIES TIMEOUT 90)
 endif()

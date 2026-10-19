@@ -5,8 +5,10 @@
 #include "SignalHistory.h"
 #include "TruePeakGuard.h"
 #include "TruePeakMeter.h"
+#include "LoudnessMeter.h"
 
-static_assert(std::atomic<float>::is_always_lock_free && std::atomic<bool>::is_always_lock_free,
+static_assert(std::atomic<float>::is_always_lock_free && std::atomic<bool>::is_always_lock_free
+              && std::atomic<unsigned>::is_always_lock_free,
               "Audio meter atomics must be lock-free");
 
 class MasterLimiterAudioProcessor : public juce::AudioProcessor
@@ -51,6 +53,18 @@ public:
     float getLatencyMs() const { return latencyMs.load(); }
     const SignalHistory& getSignalHistory() const { return signalHistory; }
     bool isTruePeakEnabled() const { return truePeakParameter->load() >= .5f; }
+    LoudnessMeter::Readings getOutputLoudness() const
+    {
+        if (meterResetRequested.load()) return {-100.f, -100.f, -100.f};
+        for (int attempt = 0; attempt < 3; ++attempt)
+        {
+            const auto before = loudnessSequence.load();
+            if ((before & 1u) != 0) continue;
+            const LoudnessMeter::Readings result{loudnessM.load(), loudnessS.load(), loudnessI.load()};
+            if (before == loudnessSequence.load()) return result;
+        }
+        return {-100.f, -100.f, -100.f};
+    }
     void resetMeters();
     juce::AudioProcessorValueTreeState& getParameters() { return parameters; }
 
@@ -73,6 +87,10 @@ private:
     LookaheadLimiter limiter;
     TruePeakGuard truePeakGuard;
     TruePeakMeter truePeakMeter;
+    LoudnessMeter loudnessMeter;
+    std::atomic<unsigned> loudnessSequence{0};
+    void publishLoudness(LoudnessMeter::Readings) noexcept;
+    std::atomic<float> loudnessM{-100.f}, loudnessS{-100.f}, loudnessI{-100.f};
     SignalHistory signalHistory;
     std::array<float, TruePeakGuard::chunk> workL{}, workR{}, workDryL{}, workDryR{}, workCeiling{}, workLink{}, workGR{};
     float displayTruePeak = -100.f;
